@@ -1,3 +1,5 @@
+## **Damn Vulnerable Defi v3 solutions**
+
 ![](cover.png)
 
 **A set of challenges to learn offensive security of smart contracts in Ethereum.**
